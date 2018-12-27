@@ -1,3 +1,5 @@
+const express = require('express');
+const app = express();
 const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
@@ -10,12 +12,40 @@ const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly',
 // time.
 const TOKEN_PATH = '../key/token.json';
 
-// Load client secrets from a local file.
-fs.readFile('../key/credentials.json', (err, content) => {
-  if (err) return console.log('Error loading client secret file:', err);
-  // Authorize a client with credentials, then call the Google Calendar API.
-  authorize(JSON.parse(content), listEvents);
+var temp = new Array();
+
+app.get('/', function(req, res) {
+  res.send("hello");
 });
+
+app.param('datepick', function(req, res, next, datepick) {
+  req.datepick = datepick+"T00:00:00-00:00";
+  next();
+});
+// http://localhost:8080/api/tags/98
+app.get('/api/dates/:datepick', function(req, res) {
+  console.log(req.datepick);
+  fs.readFile('../key/credentials.json', (err, content) => {
+    if (err) return console.log('Error loading client secret file:', err);
+    // Authorize a client with credentials, then call the Google Calendar API.
+    authorize(JSON.parse(content), listEvents, req.datepick,res);
+  });
+});
+
+app.param('tagid', function(req, res, next, tagid) {
+  // check if the tagid exists
+  // do some validations
+  // add something to the tagid
+  var modified = tagid+ '123';
+  // save name to the request
+  req.tagid= modified;
+  next();
+  });
+  // http://localhost:8080/api/tags/98
+  app.get('/api/tags/:tagid', function(req, res) {
+  // the tagid was found and is available in req.tagid
+  res.send('New tag id ' + req.tagid+ '!');
+  });
 
 /**
  * Create an OAuth2 client with the given credentials, and then execute the
@@ -23,7 +53,7 @@ fs.readFile('../key/credentials.json', (err, content) => {
  * @param {Object} credentials The authorization client credentials.
  * @param {function} callback The callback to call with the authorized client.
  */
-function authorize(credentials, callback) {
+function authorize(credentials, callback, date,res) {
   const {client_secret, client_id, redirect_uris} = credentials.installed;
   const oAuth2Client = new google.auth.OAuth2(
       client_id, client_secret, redirect_uris[0]);
@@ -32,7 +62,7 @@ function authorize(credentials, callback) {
   fs.readFile(TOKEN_PATH, (err, token) => {
     if (err) return getAccessToken(oAuth2Client, callback);
     oAuth2Client.setCredentials(JSON.parse(token));
-    callback(oAuth2Client);
+    callback(oAuth2Client,date,res);
   });
 }
 
@@ -71,7 +101,7 @@ function getAccessToken(oAuth2Client, callback) {
  * Lists the next 10 events on the user's primary calendar.
  * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
  */
-function listEvents(auth) {
+function listEvents(auth, day, resi) {
   const calendar = google.calendar({version: 'v3', auth});
 
   calendar.calendars.insert({
@@ -82,11 +112,15 @@ function listEvents(auth) {
   }, (err, calendars)=>{
     if(err) console.log(err);
   });
+  
+  var current = new Date(Date.parse(day));
+  var nextDay = new Date();
+  nextDay.setDate(current.getDate()+1);
 
   calendar.events.list({
     calendarId: '972ng140nrqmt8m6ag10dfh2jg@group.calendar.google.com',
-    timeMin: (new Date(Date.parse("2018-12-12T00:00:00-00:00"))).toISOString(),
-    timeMax: (new Date(Date.parse("2018-12-13T00:00:00-00:00"))).toISOString(),
+    timeMin: (current).toISOString(),
+    timeMax: (nextDay).toISOString(),
     maxResults: 10,
     singleEvents: true,
     orderBy: 'startTime',
@@ -98,9 +132,16 @@ function listEvents(auth) {
       events.map((event, i) => {
         const start = event.start.dateTime || event.start.date;
         console.log(`${start} - ${event.summary}`);
+        temp[i]=(`${start} - ${event.summary}`);
+        //console.log(res.data.items);
       });
+      resi.send(events);
     } else {
       console.log('No upcoming events found.');
     }
   });
 }
+
+var server = app.listen(80, function(){
+  console.log("Express server has started on port 80")
+});
